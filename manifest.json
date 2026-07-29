@@ -1,0 +1,13 @@
+{
+  "name": "Rajender Finance Manager",
+  "short_name": "RFM",
+  "description": "Personal wealth, tax, retirement and family command center.",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#f6f4ee",
+  "theme_color": "#0f766e",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}
