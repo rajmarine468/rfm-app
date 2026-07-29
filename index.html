@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>Rajender Finance Manager</title>
+
+  <!-- PWA -->
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#0f766e">
+  <link rel="icon" href="icons/icon-192.png">
+
+  <!-- iPhone / iOS install support -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="RFM">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <section id="loginView" class="login-view">
+    <div class="login-card">
+      <div class="brand-mark">RFM</div>
+      <h1>Rajender Finance Manager</h1>
+      <p>Personal wealth, tax, retirement and family command center.</p>
+
+      <!-- Local device PIN mode (used when cloud sync is not configured) -->
+      <form id="loginForm" class="auth-mode local-mode hidden">
+        <label>Display name<input id="loginName" value="Rajender" required></label>
+        <label>Local PIN<input id="loginPin" type="password" inputmode="numeric" maxlength="6" placeholder="Create or enter 4–6 digits" required></label>
+        <button type="submit">Open RFM</button>
+        <small>This PIN provides local access control only, and your data stays on this device.</small>
+      </form>
+
+      <!-- Cloud account mode (used automatically once firebase-config.js is filled in) -->
+      <form id="cloudLoginForm" class="auth-mode cloud-mode hidden">
+        <label>Email<input id="cloudEmail" type="email" required autocomplete="username"></label>
+        <label>Password<input id="cloudPassword" type="password" minlength="6" required autocomplete="current-password"></label>
+        <div class="actions">
+          <button type="submit" id="cloudSignInBtn" class="btn">Sign In</button>
+          <button type="button" id="cloudSignUpBtn" class="btn secondary">Create Account</button>
+        </div>
+        <small>Signing in syncs your RFM data securely across every device you install this app on.</small>
+        <p id="cloudAuthError" class="auth-error hidden"></p>
+      </form>
+
+      <small id="modeNote" class="mode-note"></small>
+    </div>
+  </section>
+
+  <div id="appView" class="app-shell hidden">
+    <header class="topbar">
+      <div class="topbar-title">
+        <h1>Rajender Finance Manager</h1>
+        <p id="headerSubtitle">Offline-capable · installable app</p>
+      </div>
+      <div class="header-actions">
+        <span id="syncStatus" class="sync-status hidden"></span>
+        <button id="quickAddBtn" class="light">＋ Quick Add</button>
+        <button id="lockBtn" class="light">Lock</button>
+        <button id="menuBtn" class="light mobile-only">☰</button>
+      </div>
+    </header>
+
+    <div class="layout">
+      <nav id="sidebar">
+        <button class="nav active" data-page="dashboard">Dashboard</button>
+        <button class="nav" data-page="wealth">Wealth</button>
+        <button class="nav" data-page="fixedIncome">Fixed Income</button>
+        <button class="nav" data-page="retirement">Retirement</button>
+        <button class="nav" data-page="tax">Tax</button>
+        <button class="nav" data-page="goals">Goals</button>
+        <button class="nav" data-page="family">Family</button>
+        <button class="nav" data-page="reports">Reports</button>
+        <button class="nav" data-page="learn">Learn Your RFM</button>
+        <button class="nav" data-page="settings">Settings</button>
+      </nav>
+      <main id="main"></main>
+    </div>
+  </div>
+
+  <dialog id="quickDialog">
+    <form method="dialog" class="dialog-card">
+      <div class="dialog-head"><h2>Quick Add</h2><button value="cancel" class="icon-close">×</button></div>
+      <div class="quick-grid">
+        <button type="button" data-quick="asset">Add Asset</button>
+        <button type="button" data-quick="liability">Add Liability</button>
+        <button type="button" data-quick="investment">Add Investment</button>
+        <button type="button" data-quick="goal">Add Goal</button>
+        <button type="button" data-quick="family">Add Family Member</button>
+        <button type="button" data-quick="income">Add Income</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Firebase (optional cloud sync). Loaded lazily; app works fully offline if these fail to load or are not configured. -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js" defer></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" defer></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js" defer></script>
+  <script src="firebase-config.js" defer></script>
+  <script src="firebase-sync.js" defer></script>
+  <script src="app.js" defer></script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('service-worker.js').catch(() => {});
+      });
+    }
+  </script>
+</body>
+</html>
