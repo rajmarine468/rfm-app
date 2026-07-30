@@ -11,12 +11,18 @@
   const LS_KEY = "rfm_state_v1";
   const LS_SESSION = "rfm_session_v1";
 
+  const FIXED_INCOME_TYPES = ["FD", "Corporate FD", "RD", "Bond", "Sovereign Gold Bond", "Post Office Scheme", "Debenture"];
+  const RETIREMENT_TYPES = ["PPF", "EPF", "VPF", "NPS", "Superannuation"];
+  const GENERAL_INVEST_TYPES = ["Stock", "Mutual Fund", "ETF", "Gold", "Real Estate", "Insurance / ULIP", "Cryptocurrency", "Other"];
+  const PENSION_TYPES = ["Military Pension", "Civil / Govt Pension", "Family Pension", "NPS Annuity", "Additional Pension (Other)"];
+
   /* ---------------- utilities ---------------- */
   const $ = (sel, root) => (root || document).querySelector(sel);
   const $$ = (sel, root) => Array.from((root || document).querySelectorAll(sel));
   const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
 
   function formatINR(n) {
+    if (state && state.settings && state.settings.hideAmounts) return "₹••••••";
     n = Number(n) || 0;
     const neg = n < 0;
     n = Math.abs(n);
@@ -38,11 +44,16 @@
     const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
     return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, "0")).join("");
   }
+  function infoIcon(text) {
+    if (!text) return "";
+    return ` <button type="button" class="info-icon" data-info="${escapeHtml(text)}" aria-label="What is this?">ⓘ</button>`;
+  }
 
   /* ---------------- default / seed data ---------------- */
   function seedState() {
     return {
       profile: { name: "Rajender", pinHash: null, createdAt: new Date().toISOString() },
+      settings: { hideAmounts: false },
       assets: [],
       liabilities: [],
       investments: [
@@ -66,11 +77,27 @@
           updatedAt: new Date().toISOString()
         }
       ],
+      pensions: [],
       goals: [],
       family: [],
       income: [],
       history: [] // net-worth snapshots, populated by Reports
     };
+  }
+
+  function normalizeState(s) {
+    if (!s) return s;
+    if (!s.settings) s.settings = { hideAmounts: false };
+    if (typeof s.settings.hideAmounts !== "boolean") s.settings.hideAmounts = false;
+    if (!s.pensions) s.pensions = [];
+    if (!s.income) s.income = [];
+    if (!s.assets) s.assets = [];
+    if (!s.liabilities) s.liabilities = [];
+    if (!s.investments) s.investments = [];
+    if (!s.goals) s.goals = [];
+    if (!s.family) s.family = [];
+    if (!s.history) s.history = [];
+    return s;
   }
 
   let state = null;
@@ -123,7 +150,7 @@
     const pin = $("#loginPin").value.trim();
     if (!/^\d{4,6}$/.test(pin)) { alert("Enter a 4–6 digit PIN."); return; }
 
-    state = loadState() || seedState();
+    state = normalizeState(loadState() || seedState());
     const pinHash = await sha256(pin);
 
     if (!state.profile.pinHash) {
@@ -159,7 +186,7 @@
     }
     try {
       const remote = await window.RFMSync[kind](email, password);
-      state = remote || loadState() || seedState();
+      state = normalizeState(remote || loadState() || seedState());
       saveState();
       setSession({ mode: "cloud", name: state.profile.name, email });
       enterApp();
@@ -183,6 +210,7 @@
       ? `Welcome back, ${state.profile.name} · Offline-capable · installable app`
       : "Offline-capable · installable app";
     updateSyncStatus();
+    updateHideAmountsBtn();
     goToPage("dashboard");
   }
 
@@ -197,13 +225,44 @@
     }
   }
 
+  function toggleHideAmounts() {
+    if (!state.settings) state.settings = { hideAmounts: false };
+    state.settings.hideAmounts = !state.settings.hideAmounts;
+    saveState();
+    updateHideAmountsBtn();
+    render();
+  }
+  function updateHideAmountsBtn() {
+    const btn = $("#hideAmountsBtn");
+    if (!btn || !state) return;
+    const on = !!(state.settings && state.settings.hideAmounts);
+    btn.classList.toggle("active-hide", on);
+    btn.title = on ? "Show amounts" : "Hide amounts";
+  }
+
   /* ---------------- navigation ---------------- */
   let currentPage = "dashboard";
+  let dashboardInvestFilter = "all";
+
   function goToPage(page) {
     currentPage = page;
     $$("#sidebar .nav").forEach((b) => b.classList.toggle("active", b.dataset.page === page));
     render();
     $("#main").scrollTop = 0;
+  }
+
+  function pageForInvestmentType(type) {
+    if (RETIREMENT_TYPES.includes(type)) return "retirement";
+    if (FIXED_INCOME_TYPES.includes(type)) return "fixedIncome";
+    return "wealth";
+  }
+
+  function highlightRow(id) {
+    const el = $(`[data-id="${id}"]`, $("#main"));
+    if (!el) return;
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    el.classList.add("flash-highlight");
+    setTimeout(() => el.classList.remove("flash-highlight"), 1600);
   }
 
   /* ---------------- derived totals ---------------- */
@@ -215,6 +274,17 @@
     return { assetsTotal, investTotal, liabTotal, netWorth };
   }
 
+  function monthlyIncomeTotal() {
+    const incomeMonthly = (state.income || []).reduce((s, i) => {
+      const amt = Number(i.amount || 0);
+      if (i.frequency === "Annual") return s + amt / 12;
+      if (i.frequency === "One-time") return s;
+      return s + amt;
+    }, 0);
+    const pensionMonthly = (state.pensions || []).reduce((s, p) => s + Number(p.monthlyAmount || 0), 0);
+    return incomeMonthly + pensionMonthly;
+  }
+
   /* ---------------- render router ---------------- */
   function render() {
     const main = $("#main");
@@ -223,6 +293,7 @@
       wealth: renderWealth,
       fixedIncome: renderFixedIncome,
       retirement: renderRetirement,
+      pension: renderPension,
       tax: renderTax,
       goals: renderGoals,
       family: renderFamily,
@@ -237,7 +308,18 @@
   /* ---------------- DASHBOARD ---------------- */
   function renderDashboard() {
     const t = totals();
-    const recentInvest = [...state.investments].sort((a, b) => (b.updatedAt || "").localeCompare(a.updatedAt || "")).slice(0, 4);
+    const monthlyIncome = monthlyIncomeTotal();
+
+    const filterMap = {
+      fixedIncome: (i) => FIXED_INCOME_TYPES.includes(i.type),
+      retirement: (i) => RETIREMENT_TYPES.includes(i.type),
+      wealth: (i) => !FIXED_INCOME_TYPES.includes(i.type) && !RETIREMENT_TYPES.includes(i.type)
+    };
+    const filtered = dashboardInvestFilter === "all"
+      ? state.investments
+      : state.investments.filter(filterMap[dashboardInvestFilter] || (() => true));
+    const recentInvest = [...filtered].sort((a, b) => (b.updatedAt || "").localeCompare(a.updatedAt || "")).slice(0, 8);
+
     return `
       <div class="page">
         <div class="page-head">
@@ -247,50 +329,72 @@
           </div>
         </div>
         <div class="ledger-rule"></div>
-        <div class="grid grid-3">
-          <div class="card stat-card ${t.netWorth >= 0 ? "positive" : "negative"}">
-            <div class="label">Net Worth</div>
+        <div class="grid grid-4">
+          <div class="card stat-card linkable ${t.netWorth >= 0 ? "positive" : "negative"}" data-goto="reports">
+            <div class="label">Net Worth${infoIcon("Assets + investments − liabilities. Tap to see the trend over time in Reports.")}</div>
             <div class="value">${formatINR(t.netWorth)}</div>
             <div class="sub">Assets + investments − liabilities</div>
           </div>
-          <div class="card stat-card">
-            <div class="label">Investments</div>
+          <div class="card stat-card linkable" data-goto="wealth">
+            <div class="label">Investments${infoIcon("Total current value of every holding — general investments, fixed income, retirement accounts. Tap to manage them.")}</div>
             <div class="value">${formatINR(t.investTotal)}</div>
             <div class="sub">${state.investments.length} holding${state.investments.length === 1 ? "" : "s"}</div>
           </div>
-          <div class="card stat-card ${t.liabTotal > 0 ? "negative" : ""}">
-            <div class="label">Liabilities</div>
+          <div class="card stat-card linkable ${t.liabTotal > 0 ? "negative" : ""}" data-goto="wealth">
+            <div class="label">Liabilities${infoIcon("Loans and dues you owe. Tap to view or add liabilities under Wealth.")}</div>
             <div class="value">${formatINR(t.liabTotal)}</div>
             <div class="sub">${state.liabilities.length} item${state.liabilities.length === 1 ? "" : "s"}</div>
           </div>
+          <div class="card stat-card linkable" data-goto="wealth">
+            <div class="label">Monthly Income${infoIcon("Recurring income sources plus any pension income, normalised to a monthly figure. Tap to manage income sources.")}</div>
+            <div class="value">${formatINR(monthlyIncome)}</div>
+            <div class="sub">Income + pension, per month</div>
+          </div>
         </div>
 
-        <div class="section-title">Recent Investments</div>
+        <div class="section-title-row">
+          <div class="section-title" style="margin:0;">Recent Investments${infoIcon("Your most recently updated holdings across every section. Click a row to jump straight to it.")}</div>
+          <select id="dashInvestFilter" class="dash-filter">
+            <option value="all" ${dashboardInvestFilter === "all" ? "selected" : ""}>All</option>
+            <option value="fixedIncome" ${dashboardInvestFilter === "fixedIncome" ? "selected" : ""}>Fixed Income</option>
+            <option value="retirement" ${dashboardInvestFilter === "retirement" ? "selected" : ""}>Retirement</option>
+            <option value="wealth" ${dashboardInvestFilter === "wealth" ? "selected" : ""}>General / Other</option>
+          </select>
+        </div>
         <div class="card">
-          ${recentInvest.length ? `<div class="item-list">${recentInvest.map(investRow).join("")}</div>`
+          ${recentInvest.length ? `<div class="item-list scroll-list">${recentInvest.map(investRowDash).join("")}</div>`
             : emptyState("No investments yet", "Use Quick Add to record your first holding.")}
         </div>
 
-        <div class="section-title">Goals in Progress</div>
+        <div class="section-title">Goals in Progress${infoIcon("Your savings goals and how close you are to each target. Click one to open Goals.")}</div>
         <div class="card">
-          ${state.goals.length ? `<div class="item-list">${state.goals.slice(0, 4).map(goalRow).join("")}</div>`
+          ${state.goals.length ? `<div class="item-list scroll-list">${state.goals.map(goalRowDash).join("")}</div>`
             : emptyState("No goals yet", "Add a goal to start tracking progress.")}
         </div>
       </div>`;
   }
 
-  function investRow(inv) {
-    return `<div class="item-row">
+  function investRowDash(inv) {
+    return `<div class="item-row clickable-row" data-nav-inv="${inv.id}">
       <div class="meta">
-        <div class="name">${escapeHtml(inv.name)} <span class="tag ${inv.type === "PPF" ? "gold" : ""}">${escapeHtml(inv.type)}</span></div>
+        <div class="name">${escapeHtml(inv.name)} <span class="tag ${RETIREMENT_TYPES.includes(inv.type) ? "gold" : ""}">${escapeHtml(inv.type)}</span></div>
         <div class="sub">${escapeHtml(inv.institution || "")}${inv.accountNumber ? " · " + escapeHtml(inv.accountNumber) : ""}</div>
       </div>
       <div class="amount">${formatINR(inv.currentValue)}</div>
     </div>`;
   }
-  function goalRow(g) {
-    const pct = g.targetAmount ? Math.min(100, Math.round((g.currentAmount / g.targetAmount) * 100)) : 0;
+  function investRow(inv) {
     return `<div class="item-row">
+      <div class="meta">
+        <div class="name">${escapeHtml(inv.name)} <span class="tag ${RETIREMENT_TYPES.includes(inv.type) ? "gold" : ""}">${escapeHtml(inv.type)}</span></div>
+        <div class="sub">${escapeHtml(inv.institution || "")}${inv.accountNumber ? " · " + escapeHtml(inv.accountNumber) : ""}</div>
+      </div>
+      <div class="amount">${formatINR(inv.currentValue)}</div>
+    </div>`;
+  }
+  function goalRowDash(g) {
+    const pct = g.targetAmount ? Math.min(100, Math.round((g.currentAmount / g.targetAmount) * 100)) : 0;
+    return `<div class="item-row clickable-row" data-nav-goal="${g.id}">
       <div class="meta">
         <div class="name">${escapeHtml(g.name)}</div>
         <div class="sub">${formatINR(g.currentAmount)} of ${formatINR(g.targetAmount)} · ${pct}% · target ${formatDate(g.targetDate)}</div>
@@ -302,10 +406,10 @@
     return `<div class="empty-state"><div class="big">${escapeHtml(big)}</div><div>${escapeHtml(small)}</div></div>`;
   }
 
-  /* ---------------- WEALTH (assets, liabilities, general investments) ---------------- */
+  /* ---------------- WEALTH (assets, liabilities, income, general investments) ---------------- */
   function renderWealth() {
     const t = totals();
-    const generalInvest = state.investments.filter((i) => !["PPF", "EPF", "NPS"].includes(i.type) && !["Bond", "FD", "RD"].includes(i.type));
+    const generalInvest = state.investments.filter((i) => !RETIREMENT_TYPES.includes(i.type) && !FIXED_INCOME_TYPES.includes(i.type));
     return `
       <div class="page">
         <div class="page-head"><div><div class="eyebrow">Net worth</div><h2>Wealth</h2></div></div>
@@ -338,7 +442,13 @@
         </div>
         <div id="form-liability"></div>
 
-        <div class="section-title">Other Investments <button class="btn-add" data-open-form="investment">+ Add investment</button></div>
+        <div class="section-title">Income Sources${infoIcon("Recurring income like salary, rent or a side income. Pension income has its own dedicated Pension tab.")} <button class="btn-add" data-open-form="income">+ Add income</button></div>
+        <div class="card">
+          ${state.income.length ? `<div class="item-list">${state.income.map(incomeRow).join("")}</div>` : emptyState("No income sources recorded", "Salary, rent and other recurring income.")}
+        </div>
+        <div id="form-income"></div>
+
+        <div class="section-title">Other Investments${infoIcon("General market-linked holdings: stocks, mutual funds, ETFs, gold, real estate, insurance/ULIP, crypto. For FDs/Bonds use Fixed Income; for PPF/EPF/NPS use Retirement.")} <button class="btn-add" data-open-form="investment">+ Add investment</button></div>
         <div class="card">
           ${generalInvest.length ? `<div class="item-list">${generalInvest.map(investRowWithActions).join("")}</div>` : emptyState("No general investments", "Stocks, mutual funds and more can be added here.")}
         </div>
@@ -346,8 +456,16 @@
       </div>`;
   }
 
-  function investRowWithActions(inv) {
+  function incomeRow(inc) {
     return `<div class="item-row">
+      <div class="meta"><div class="name">${escapeHtml(inc.source)}<span class="tag">${escapeHtml(inc.frequency || "Monthly")}</span></div></div>
+      <div class="amount">${formatINR(inc.amount)}</div>
+      <div class="row-actions"><button class="danger" data-del="income" data-id="${inc.id}">Remove</button></div>
+    </div>`;
+  }
+
+  function investRowWithActions(inv) {
+    return `<div class="item-row" data-id="${inv.id}">
       <div class="meta">
         <div class="name">${escapeHtml(inv.name)} <span class="tag">${escapeHtml(inv.type)}</span></div>
         <div class="sub">${escapeHtml(inv.institution || "")}</div>
@@ -357,26 +475,26 @@
     </div>`;
   }
 
-  /* ---------------- FIXED INCOME (bonds, FDs, RDs) ---------------- */
+  /* ---------------- FIXED INCOME (bonds, FDs, RDs, and similar) ---------------- */
   function renderFixedIncome() {
-    const items = state.investments.filter((i) => ["Bond", "FD", "RD"].includes(i.type));
+    const items = state.investments.filter((i) => FIXED_INCOME_TYPES.includes(i.type));
     const total = items.reduce((s, i) => s + Number(i.currentValue || 0), 0);
     return `
       <div class="page">
-        <div class="page-head"><div><div class="eyebrow">Bonds · FDs · RDs</div><h2>Fixed Income</h2></div></div>
+        <div class="page-head"><div><div class="eyebrow">FDs · Bonds · RDs · SGBs</div><h2>Fixed Income${infoIcon("Instruments with a fixed or predictable return: bank/corporate FDs, RDs, bonds, sovereign gold bonds, post office schemes, debentures.")}</h2></div></div>
         <div class="ledger-rule"></div>
         <div class="grid grid-3">
           <div class="card stat-card"><div class="label">Fixed Income Value</div><div class="value">${formatINR(total)}</div><div class="sub">${items.length} instrument${items.length === 1 ? "" : "s"}</div></div>
         </div>
         <div class="section-title">Holdings <button class="btn-add" data-open-form="fixedincome">+ Add fixed income</button></div>
         <div class="card">
-          ${items.length ? items.map(fixedIncomeCard).join("") : emptyState("No fixed-income holdings yet", "Add bonds, fixed deposits or recurring deposits.")}
+          ${items.length ? items.map(fixedIncomeCard).join("") : emptyState("No fixed-income holdings yet", "Add bonds, fixed deposits, recurring deposits and similar instruments.")}
         </div>
         <div id="form-fixedincome"></div>
       </div>`;
   }
   function fixedIncomeCard(inv) {
-    return `<div class="card" style="margin-bottom:12px;">
+    return `<div class="card" data-id="${inv.id}" style="margin-bottom:12px;">
       <div class="item-row" style="border:none; padding-bottom:6px;">
         <div class="meta">
           <div class="name">${escapeHtml(inv.name)} <span class="tag">${escapeHtml(inv.type)}</span></div>
@@ -393,25 +511,25 @@
     </div>`;
   }
 
-  /* ---------------- RETIREMENT (PPF, EPF, NPS) ---------------- */
+  /* ---------------- RETIREMENT (PPF, EPF, VPF, NPS, Superannuation) ---------------- */
   function renderRetirement() {
-    const items = state.investments.filter((i) => ["PPF", "EPF", "NPS"].includes(i.type));
+    const items = state.investments.filter((i) => RETIREMENT_TYPES.includes(i.type));
     const total = items.reduce((s, i) => s + Number(i.currentValue || 0), 0);
     return `
       <div class="page">
-        <div class="page-head"><div><div class="eyebrow">PPF · EPF · NPS</div><h2>Retirement</h2></div></div>
+        <div class="page-head"><div><div class="eyebrow">PPF · EPF · VPF · NPS</div><h2>Retirement${infoIcon("Retirement accounts you're still building up: PPF, EPF, VPF, NPS and Superannuation. For pension income you already receive, see the Pension tab.")}</h2></div></div>
         <div class="ledger-rule"></div>
         <div class="grid grid-3">
           <div class="card stat-card"><div class="label">Retirement Corpus</div><div class="value">${formatINR(total)}</div><div class="sub">${items.length} account${items.length === 1 ? "" : "s"}</div></div>
         </div>
         <div class="section-title">Accounts <button class="btn-add" data-open-form="retirement">+ Add retirement account</button></div>
-        ${items.length ? items.map(retirementCard).join("") : `<div class="card">${emptyState("No retirement accounts yet", "PPF, EPF and NPS accounts will appear here.")}</div>`}
+        ${items.length ? items.map(retirementCard).join("") : `<div class="card">${emptyState("No retirement accounts yet", "PPF, EPF, VPF, NPS and Superannuation accounts will appear here.")}</div>`}
         <div id="form-retirement"></div>
       </div>`;
   }
   function retirementCard(inv) {
     const contribs = (inv.contributions || []).slice().reverse().slice(0, 5);
-    return `<div class="card" style="margin-bottom:14px;">
+    return `<div class="card" data-id="${inv.id}" style="margin-bottom:14px;">
       <div class="item-row" style="border:none; padding-bottom:4px;">
         <div class="meta">
           <div class="name">${escapeHtml(inv.name)} <span class="tag gold">${escapeHtml(inv.type)}</span></div>
@@ -433,18 +551,47 @@
     </div>`;
   }
 
+  /* ---------------- PENSION (income you already receive) ---------------- */
+  function renderPension() {
+    const items = state.pensions || [];
+    const totalMonthly = items.reduce((s, p) => s + Number(p.monthlyAmount || 0), 0);
+    return `
+      <div class="page">
+        <div class="page-head"><div><div class="eyebrow">Guaranteed monthly income</div><h2>Pension${infoIcon("Pension income you already receive — military, civil, family pension or an NPS annuity payout. Unlike Fixed Income, there's no principal or maturity date here, just a recurring monthly amount.")}</h2></div></div>
+        <div class="ledger-rule"></div>
+        <div class="grid grid-3">
+          <div class="card stat-card"><div class="label">Monthly Pension Income</div><div class="value">${formatINR(totalMonthly)}</div><div class="sub">${items.length} pension${items.length === 1 ? "" : "s"}</div></div>
+        </div>
+        <div class="section-title">Pensions <button class="btn-add" data-open-form="pension">+ Add pension</button></div>
+        <div class="card">
+          ${items.length ? `<div class="item-list">${items.map(pensionRow).join("")}</div>` : emptyState("No pensions recorded", "Add military, civil, family or annuity pension income.")}
+        </div>
+        <div id="form-pension"></div>
+      </div>`;
+  }
+  function pensionRow(p) {
+    return `<div class="item-row" data-id="${p.id}">
+      <div class="meta">
+        <div class="name">${escapeHtml(p.label)} <span class="tag gold">${escapeHtml(p.pensionType || "Pension")}</span></div>
+        <div class="sub">${escapeHtml(p.source || "")}${p.startDate ? " · since " + formatDate(p.startDate) : ""}</div>
+      </div>
+      <div class="amount">${formatINR(p.monthlyAmount)}/mo</div>
+      <div class="row-actions"><button class="danger" data-del="pension" data-id="${p.id}">Remove</button></div>
+    </div>`;
+  }
+
   /* ---------------- TAX ---------------- */
   function renderTax() {
-    const eightyC = state.investments.filter((i) => ["PPF", "EPF"].includes(i.type)).reduce((s, i) => s + Number(i.investedThisYear || 0), 0);
+    const eightyC = state.investments.filter((i) => ["PPF", "EPF", "VPF"].includes(i.type)).reduce((s, i) => s + Number(i.investedThisYear || 0), 0);
     const cap = 150000;
     const pct = Math.min(100, Math.round((eightyC / cap) * 100));
     return `
       <div class="page">
-        <div class="page-head"><div><div class="eyebrow">Deductions</div><h2>Tax</h2></div></div>
+        <div class="page-head"><div><div class="eyebrow">Deductions</div><h2>Tax${infoIcon("A simple Section 80C tracker based on your PPF/EPF/VPF contributions this financial year. Not tax advice.")}</h2></div></div>
         <div class="ledger-rule"></div>
         <div class="card">
           <div class="form-title">Section 80C tracker (old regime)</div>
-          <div class="sub" style="margin-bottom:10px;">Based on PPF / EPF contributions recorded this financial year.</div>
+          <div class="sub" style="margin-bottom:10px;">Based on PPF / EPF / VPF contributions recorded this financial year.</div>
           <div style="background:var(--teal-50); border-radius:20px; height:14px; overflow:hidden; border:1px solid var(--line);">
             <div style="height:100%; width:${pct}%; background:var(--teal-700);"></div>
           </div>
@@ -461,12 +608,12 @@
   function renderGoals() {
     return `
       <div class="page">
-        <div class="page-head"><div><div class="eyebrow">Plan ahead</div><h2>Goals</h2></div></div>
+        <div class="page-head"><div><div class="eyebrow">Plan ahead</div><h2>Goals${infoIcon("Savings targets like a house, education or a trip. Track how much you've saved against the target.")}</h2></div></div>
         <div class="ledger-rule"></div>
         <div class="section-title">Your goals <button class="btn-add" data-open-form="goal">+ Add goal</button></div>
         <div class="card">
           ${state.goals.length ? `<div class="item-list">${state.goals.map((g) => `
-            <div class="item-row">
+            <div class="item-row" data-id="${g.id}">
               <div class="meta"><div class="name">${escapeHtml(g.name)}</div><div class="sub">Target ${formatDate(g.targetDate)}</div></div>
               <div class="amount">${formatINR(g.currentAmount)} / ${formatINR(g.targetAmount)}</div>
               <div class="row-actions"><button class="danger" data-del="goal" data-id="${g.id}">Remove</button></div>
@@ -480,7 +627,7 @@
   function renderFamily() {
     return `
       <div class="page">
-        <div class="page-head"><div><div class="eyebrow">Household</div><h2>Family</h2></div></div>
+        <div class="page-head"><div><div class="eyebrow">Household</div><h2>Family${infoIcon("A simple record of dependants for your financial planning — nominee details, policy numbers, notes.")}</h2></div></div>
         <div class="ledger-rule"></div>
         <div class="section-title">Family members <button class="btn-add" data-open-form="family">+ Add member</button></div>
         <div class="card">
@@ -499,7 +646,7 @@
     const t = totals();
     return `
       <div class="page">
-        <div class="page-head"><div><div class="eyebrow">Summary</div><h2>Reports</h2></div></div>
+        <div class="page-head"><div><div class="eyebrow">Summary</div><h2>Reports${infoIcon("Save periodic net-worth snapshots to build a trend over time, and export a full JSON backup.")}</h2></div></div>
         <div class="ledger-rule"></div>
         <div class="card">
           <div class="form-title">Current snapshot</div>
@@ -531,16 +678,21 @@
         <div class="ledger-rule"></div>
         <div class="card">
           <div class="form-title">Quick Add</div>
-          <div class="sub">The ＋ Quick Add button in the header opens the assets, liabilities, investments, goals, family and income forms — the fastest way to log something without changing pages.</div>
+          <div class="sub">The ＋ Quick Add button in the header opens the assets, liabilities, investments, pension, goals, family and income forms — the fastest way to log something without changing pages.</div>
         </div>
         <div class="section-title">Where things live</div>
         <div class="card">
           <div class="item-list">
-            <div class="item-row"><div class="meta"><div class="name">Wealth</div><div class="sub">Assets, liabilities and general investments (stocks, mutual funds)</div></div></div>
-            <div class="item-row"><div class="meta"><div class="name">Fixed Income</div><div class="sub">Bonds, fixed deposits and recurring deposits</div></div></div>
-            <div class="item-row"><div class="meta"><div class="name">Retirement</div><div class="sub">PPF, EPF and NPS accounts with contribution history</div></div></div>
+            <div class="item-row"><div class="meta"><div class="name">Wealth</div><div class="sub">Assets, liabilities, income sources and general investments (stocks, mutual funds, gold, real estate)</div></div></div>
+            <div class="item-row"><div class="meta"><div class="name">Fixed Income</div><div class="sub">FDs, RDs, bonds, sovereign gold bonds and similar fixed-return instruments</div></div></div>
+            <div class="item-row"><div class="meta"><div class="name">Retirement</div><div class="sub">PPF, EPF, VPF, NPS and Superannuation accounts with contribution history</div></div></div>
+            <div class="item-row"><div class="meta"><div class="name">Pension</div><div class="sub">Pension income you already receive — military, civil, family or annuity</div></div></div>
             <div class="item-row"><div class="meta"><div class="name">Tax</div><div class="sub">A simple Section 80C tracker based on your retirement contributions</div></div></div>
           </div>
+        </div>
+        <div class="section-title">Tips</div>
+        <div class="card">
+          <div class="pill-note">Tap the ⓘ icon next to any tab or field for a plain-language explanation. Tap the 👁 icon in the header to hide all amounts on screen — handy over someone's shoulder.</div>
         </div>
       </div>`;
   }
@@ -556,6 +708,13 @@
           <div class="form-title">Profile</div>
           <div class="sub">Name: <strong>${escapeHtml(state.profile.name)}</strong></div>
           <div class="sub">Mode: <strong>${session && session.mode === "cloud" ? "Cloud sync" : "Local device"}</strong></div>
+        </div>
+        <div class="section-title">Privacy</div>
+        <div class="card">
+          <div class="sub" style="margin-bottom:10px;">Hide all ₹ amounts on screen — toggle any time from the 👁 icon in the header, or here.</div>
+          <div class="form-footer">
+            <button class="btn-ghost" id="toggleHideBtn">${state.settings && state.settings.hideAmounts ? "Show amounts" : "Hide amounts"}</button>
+          </div>
         </div>
         <div class="section-title">Data</div>
         <div class="card">
@@ -596,7 +755,7 @@
       title: "Add investment",
       fields: [
         { key: "name", label: "Name", type: "text", required: true },
-        { key: "type", label: "Type", type: "select", options: ["Stock", "Mutual Fund", "ETF", "Gold", "Other"] },
+        { key: "type", label: "Type", type: "select", options: GENERAL_INVEST_TYPES, info: "General market-linked holdings. For FDs/Bonds use Fixed Income, for PPF/EPF/NPS use Retirement, for pension income use the Pension tab." },
         { key: "institution", label: "Institution / broker", type: "text" },
         { key: "currentValue", label: "Current value (₹)", type: "number", required: true }
       ],
@@ -606,7 +765,7 @@
       title: "Add fixed income",
       fields: [
         { key: "name", label: "Name", type: "text", required: true },
-        { key: "type", label: "Type", type: "select", options: ["Bond", "FD", "RD"] },
+        { key: "type", label: "Type", type: "select", options: [...FIXED_INCOME_TYPES, "Other"], info: "FD/RD have a fixed tenure and guaranteed return. Bonds and Sovereign Gold Bonds move with rates/gold price. Post Office Scheme covers NSC/KVP-type instruments." },
         { key: "institution", label: "Issuer / bank", type: "text" },
         { key: "accountNumber", label: "Account / folio no.", type: "text" },
         { key: "principal", label: "Principal (₹)", type: "number" },
@@ -620,7 +779,7 @@
       title: "Add retirement account",
       fields: [
         { key: "name", label: "Name", type: "text", required: true },
-        { key: "type", label: "Type", type: "select", options: ["PPF", "EPF", "NPS"] },
+        { key: "type", label: "Type", type: "select", options: [...RETIREMENT_TYPES, "Other"], info: "PPF & VPF are voluntary savings; EPF is employer-linked; NPS is market-linked with an annuity at retirement; Superannuation is an employer retirement benefit." },
         { key: "institution", label: "Bank / provider", type: "text" },
         { key: "accountNumber", label: "Account number", type: "text" },
         { key: "openingDate", label: "Opening date", type: "date" },
@@ -630,6 +789,29 @@
         { key: "interestRate", label: "Interest rate (%)", type: "number" }
       ],
       submit(data) { addInvestment(data); }
+    },
+    pension: {
+      title: "Add pension",
+      fields: [
+        { key: "label", label: "Label", type: "text", required: true, placeholder: "e.g. Army Pension, LIC Annuity" },
+        { key: "pensionType", label: "Pension type", type: "select", options: PENSION_TYPES, info: "Military/Civil/Family pension are government-paid. NPS Annuity is the payout from your NPS corpus. Use Additional Pension for any other recurring pension-like income." },
+        { key: "monthlyAmount", label: "Monthly amount (₹)", type: "number", required: true },
+        { key: "source", label: "Paid by (bank / PDA / insurer)", type: "text" },
+        { key: "startDate", label: "Start date", type: "date" },
+        { key: "notes", label: "Notes", type: "text" }
+      ],
+      submit(data) {
+        state.pensions.push({
+          id: uid(),
+          label: data.label,
+          pensionType: data.pensionType || "Additional Pension (Other)",
+          monthlyAmount: Number(data.monthlyAmount || 0),
+          source: data.source || "",
+          startDate: data.startDate || "",
+          notes: data.notes || "",
+          updatedAt: new Date().toISOString()
+        });
+      }
     },
     goal: {
       title: "Add goal",
@@ -707,7 +889,7 @@
         <div class="form-title">${escapeHtml(def.title)}</div>
         <form data-form-key="${key}">
           <div class="form-grid">
-            ${def.fields.map((f) => `<div class="field"><label>${escapeHtml(f.label)}</label>${fieldHtml(f)}</div>`).join("")}
+            ${def.fields.map((f) => `<div class="field"><label>${escapeHtml(f.label)}${infoIcon(f.info)}</label>${fieldHtml(f)}</div>`).join("")}
           </div>
           <div class="form-footer">
             <button type="submit" class="btn-primary">Save</button>
@@ -730,13 +912,15 @@
 
   /* ---------------- page-level event wiring ---------------- */
   function wirePageEvents(page) {
-    $$("[data-open-form]", $("#main")).forEach((btn) => {
+    const main = $("#main");
+
+    $$("[data-open-form]", main).forEach((btn) => {
       btn.addEventListener("click", () => openInlineForm(btn.dataset.openForm));
     });
-    $$("[data-del]", $("#main")).forEach((btn) => {
+    $$("[data-del]", main).forEach((btn) => {
       btn.addEventListener("click", () => {
         const kind = btn.dataset.del, id = btn.dataset.id;
-        const map = { asset: "assets", liability: "liabilities", investment: "investments", goal: "goals", family: "family", income: "income" };
+        const map = { asset: "assets", liability: "liabilities", investment: "investments", pension: "pensions", goal: "goals", family: "family", income: "income" };
         const arrName = map[kind];
         if (!arrName) return;
         if (!confirm("Remove this item?")) return;
@@ -745,6 +929,40 @@
         render();
       });
     });
+
+    // dashboard: clickable KPI cards
+    $$("[data-goto]", main).forEach((card) => {
+      card.addEventListener("click", (e) => {
+        if (e.target.closest(".info-icon")) return;
+        goToPage(card.dataset.goto);
+      });
+    });
+    // dashboard: clickable investment rows
+    $$("[data-nav-inv]", main).forEach((row) => {
+      row.addEventListener("click", () => {
+        const id = row.dataset.navInv;
+        const inv = state.investments.find((i) => i.id === id);
+        if (!inv) return;
+        goToPage(pageForInvestmentType(inv.type));
+        setTimeout(() => highlightRow(id), 60);
+      });
+    });
+    // dashboard: clickable goal rows
+    $$("[data-nav-goal]", main).forEach((row) => {
+      row.addEventListener("click", () => {
+        const id = row.dataset.navGoal;
+        goToPage("goals");
+        setTimeout(() => highlightRow(id), 60);
+      });
+    });
+    // dashboard: investment filter dropdown
+    const filterSel = $("#dashInvestFilter", main);
+    if (filterSel) {
+      filterSel.addEventListener("change", () => {
+        dashboardInvestFilter = filterSel.value;
+        render();
+      });
+    }
 
     if (page === "reports") {
       const snapBtn = $("#saveSnapshotBtn");
@@ -759,6 +977,8 @@
     if (page === "settings") {
       const expBtn2 = $("#exportJsonBtn2");
       if (expBtn2) expBtn2.addEventListener("click", exportData);
+      const toggleBtn = $("#toggleHideBtn");
+      if (toggleBtn) toggleBtn.addEventListener("click", toggleHideAmounts);
       const resetBtn = $("#resetDataBtn");
       if (resetBtn) resetBtn.addEventListener("click", () => {
         if (!confirm("This will permanently erase all RFM data on this device. Continue?")) return;
@@ -788,11 +1008,57 @@
       btn.addEventListener("click", () => {
         const kind = btn.dataset.quick;
         dialog.close();
-        const pageForKind = { asset: "wealth", liability: "wealth", investment: "wealth", goal: "goals", family: "family", income: "wealth" };
+        const pageForKind = { asset: "wealth", liability: "wealth", investment: "wealth", pension: "pension", goal: "goals", family: "family", income: "wealth" };
         goToPage(pageForKind[kind] || "dashboard");
         setTimeout(() => openInlineForm(kind), 50);
       });
     });
+  }
+
+  /* ---------------- info tooltip popover ---------------- */
+  function showInfoPopover(target, text) {
+    const pop = $("#infoPopover");
+    if (!pop) return;
+    pop.textContent = text;
+    pop.classList.remove("hidden");
+    const width = Math.min(280, window.innerWidth - 24);
+    pop.style.width = width + "px";
+    const r = target.getBoundingClientRect();
+    let left = r.left + r.width / 2 - width / 2;
+    left = Math.max(10, Math.min(left, window.innerWidth - width - 10));
+    let top = r.bottom + 8;
+    pop.style.left = left + "px";
+    pop.style.top = top + "px";
+    requestAnimationFrame(() => {
+      const ph = pop.offsetHeight;
+      if (top + ph > window.innerHeight - 10) {
+        pop.style.top = Math.max(10, r.top - ph - 8) + "px";
+      }
+    });
+  }
+  function hideInfoPopover() {
+    const pop = $("#infoPopover");
+    if (pop) { pop.classList.add("hidden"); pop.dataset.owner = ""; }
+  }
+  function wireInfoPopover() {
+    document.addEventListener("click", (e) => {
+      const icon = e.target.closest(".info-icon");
+      if (icon) {
+        e.preventDefault();
+        e.stopPropagation();
+        const pop = $("#infoPopover");
+        const wasOpenForThis = pop && !pop.classList.contains("hidden") && pop.dataset.owner === icon.dataset.info;
+        hideInfoPopover();
+        if (!wasOpenForThis) {
+          pop.dataset.owner = icon.dataset.info;
+          showInfoPopover(icon, icon.dataset.info);
+        }
+        return;
+      }
+      if (!e.target.closest(".info-popover")) hideInfoPopover();
+    });
+    window.addEventListener("scroll", hideInfoPopover, true);
+    window.addEventListener("resize", hideInfoPopover);
   }
 
   /* ---------------- boot ---------------- */
@@ -801,9 +1067,12 @@
     $("#cloudLoginForm").addEventListener("submit", handleCloudSignIn);
     $("#cloudSignUpBtn").addEventListener("click", handleCloudSignUp);
     $("#lockBtn").addEventListener("click", handleLock);
+    const hideBtn = $("#hideAmountsBtn");
+    if (hideBtn) hideBtn.addEventListener("click", toggleHideAmounts);
     $$("#sidebar .nav").forEach((btn) => btn.addEventListener("click", () => goToPage(btn.dataset.page)));
     $("#menuBtn").addEventListener("click", () => $("#sidebar").scrollIntoView({ behavior: "smooth" }));
     wireQuickAdd();
+    wireInfoPopover();
   }
 
   document.addEventListener("DOMContentLoaded", () => {
@@ -812,11 +1081,11 @@
 
     const session = getSession();
     if (session) {
-      state = loadState() || seedState();
+      state = normalizeState(loadState() || seedState());
       enterApp();
     }
   });
 
   // expose for debugging / firebase-sync.js hooks
-  window.RFM = { getState: () => state, setState: (s) => { state = s; render(); }, saveState, formatINR, formatDate };
+  window.RFM = { getState: () => state, setState: (s) => { state = normalizeState(s); render(); }, saveState, formatINR, formatDate };
 })();
