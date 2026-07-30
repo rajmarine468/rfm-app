@@ -426,7 +426,7 @@
             <div class="item-row">
               <div class="meta"><div class="name">${escapeHtml(a.name)}<span class="tag">${escapeHtml(a.category || "Asset")}</span></div><div class="sub">Updated ${formatDate(a.updatedAt)}</div></div>
               <div class="amount">${formatINR(a.value)}</div>
-              <div class="row-actions"><button class="danger" data-del="asset" data-id="${a.id}">Remove</button></div>
+              <div class="row-actions"><button data-edit="asset" data-id="${a.id}">Edit</button><button class="danger" data-del="asset" data-id="${a.id}">Remove</button></div>
             </div>`).join("")}</div>` : emptyState("No assets recorded", "Property, gold, vehicles — add what you own.")}
         </div>
         <div id="form-asset"></div>
@@ -437,7 +437,7 @@
             <div class="item-row">
               <div class="meta"><div class="name">${escapeHtml(l.name)}<span class="tag">${escapeHtml(l.category || "Loan")}</span></div><div class="sub">Updated ${formatDate(l.updatedAt)}</div></div>
               <div class="amount">${formatINR(l.amount)}</div>
-              <div class="row-actions"><button class="danger" data-del="liability" data-id="${l.id}">Remove</button></div>
+              <div class="row-actions"><button data-edit="liability" data-id="${l.id}">Edit</button><button class="danger" data-del="liability" data-id="${l.id}">Remove</button></div>
             </div>`).join("")}</div>` : emptyState("No liabilities recorded", "Loans and dues you owe will appear here.")}
         </div>
         <div id="form-liability"></div>
@@ -460,7 +460,7 @@
     return `<div class="item-row">
       <div class="meta"><div class="name">${escapeHtml(inc.source)}<span class="tag">${escapeHtml(inc.frequency || "Monthly")}</span></div></div>
       <div class="amount">${formatINR(inc.amount)}</div>
-      <div class="row-actions"><button class="danger" data-del="income" data-id="${inc.id}">Remove</button></div>
+      <div class="row-actions"><button data-edit="income" data-id="${inc.id}">Edit</button><button class="danger" data-del="income" data-id="${inc.id}">Remove</button></div>
     </div>`;
   }
 
@@ -471,7 +471,7 @@
         <div class="sub">${escapeHtml(inv.institution || "")}</div>
       </div>
       <div class="amount">${formatINR(inv.currentValue)}</div>
-      <div class="row-actions"><button class="danger" data-del="investment" data-id="${inv.id}">Remove</button></div>
+      <div class="row-actions"><button data-edit="investment" data-id="${inv.id}">Edit</button><button class="danger" data-del="investment" data-id="${inv.id}">Remove</button></div>
     </div>`;
   }
 
@@ -501,7 +501,7 @@
           <div class="sub">${escapeHtml(inv.institution || "")}${inv.accountNumber ? " · " + escapeHtml(inv.accountNumber) : ""}</div>
         </div>
         <div class="amount">${formatINR(inv.currentValue)}</div>
-        <div class="row-actions"><button class="danger" data-del="investment" data-id="${inv.id}">Remove</button></div>
+        <div class="row-actions"><button data-edit="fixedincome" data-id="${inv.id}">Edit</button><button class="danger" data-del="investment" data-id="${inv.id}">Remove</button></div>
       </div>
       <div class="grid grid-3" style="margin-top:8px;">
         <div class="sub">Principal<br><strong>${formatINR(inv.principal)}</strong></div>
@@ -536,7 +536,7 @@
           <div class="sub">${escapeHtml(inv.holder || "")}${inv.accountNumber ? " · A/c " + escapeHtml(inv.accountNumber) : ""}</div>
         </div>
         <div class="amount">${formatINR(inv.currentValue)}</div>
-        <div class="row-actions"><button class="danger" data-del="investment" data-id="${inv.id}">Remove</button></div>
+        <div class="row-actions"><button data-edit="retirement" data-id="${inv.id}">Edit</button><button class="danger" data-del="investment" data-id="${inv.id}">Remove</button></div>
       </div>
       <div class="grid grid-3" style="margin-top:10px;">
         <div class="sub">Opening date<br><strong>${formatDate(inv.openingDate)}</strong></div>
@@ -576,7 +576,7 @@
         <div class="sub">${escapeHtml(p.source || "")}${p.startDate ? " · since " + formatDate(p.startDate) : ""}</div>
       </div>
       <div class="amount">${formatINR(p.monthlyAmount)}/mo</div>
-      <div class="row-actions"><button class="danger" data-del="pension" data-id="${p.id}">Remove</button></div>
+      <div class="row-actions"><button data-edit="pension" data-id="${p.id}">Edit</button><button class="danger" data-del="pension" data-id="${p.id}">Remove</button></div>
     </div>`;
   }
 
@@ -616,7 +616,7 @@
             <div class="item-row" data-id="${g.id}">
               <div class="meta"><div class="name">${escapeHtml(g.name)}</div><div class="sub">Target ${formatDate(g.targetDate)}</div></div>
               <div class="amount">${formatINR(g.currentAmount)} / ${formatINR(g.targetAmount)}</div>
-              <div class="row-actions"><button class="danger" data-del="goal" data-id="${g.id}">Remove</button></div>
+              <div class="row-actions"><button data-edit="goal" data-id="${g.id}">Edit</button><button class="danger" data-del="goal" data-id="${g.id}">Remove</button></div>
             </div>`).join("")}</div>` : emptyState("No goals yet", "Retirement, a house, education — set a target and track it.")}
         </div>
         <div id="form-goal"></div>
@@ -634,7 +634,7 @@
           ${state.family.length ? `<div class="item-list">${state.family.map((f) => `
             <div class="item-row">
               <div class="meta"><div class="name">${escapeHtml(f.name)}<span class="tag">${escapeHtml(f.relation || "")}</span></div><div class="sub">${f.dob ? "DOB " + formatDate(f.dob) : ""}</div></div>
-              <div class="row-actions"><button class="danger" data-del="family" data-id="${f.id}">Remove</button></div>
+              <div class="row-actions"><button data-edit="family" data-id="${f.id}">Edit</button><button class="danger" data-del="family" data-id="${f.id}">Remove</button></div>
             </div>`).join("")}</div>` : emptyState("No family members added", "Track dependents relevant to your financial plan.")}
         </div>
         <div id="form-family"></div>
@@ -676,23 +676,40 @@
       <div class="page">
         <div class="page-head"><div><div class="eyebrow">Guide</div><h2>Learn Your RFM</h2></div></div>
         <div class="ledger-rule"></div>
+
         <div class="card">
-          <div class="form-title">Quick Add</div>
-          <div class="sub">The ＋ Quick Add button in the header opens the assets, liabilities, investments, pension, goals, family and income forms — the fastest way to log something without changing pages.</div>
-        </div>
-        <div class="section-title">Where things live</div>
-        <div class="card">
+          <div class="form-title">Where things live</div>
           <div class="item-list">
-            <div class="item-row"><div class="meta"><div class="name">Wealth</div><div class="sub">Assets, liabilities, income sources and general investments (stocks, mutual funds, gold, real estate)</div></div></div>
-            <div class="item-row"><div class="meta"><div class="name">Fixed Income</div><div class="sub">FDs, RDs, bonds, sovereign gold bonds and similar fixed-return instruments</div></div></div>
-            <div class="item-row"><div class="meta"><div class="name">Retirement</div><div class="sub">PPF, EPF, VPF, NPS and Superannuation accounts with contribution history</div></div></div>
-            <div class="item-row"><div class="meta"><div class="name">Pension</div><div class="sub">Pension income you already receive — military, civil, family or annuity</div></div></div>
-            <div class="item-row"><div class="meta"><div class="name">Tax</div><div class="sub">A simple Section 80C tracker based on your retirement contributions</div></div></div>
+            <div class="item-row"><div class="meta"><div class="name">Dashboard</div><div class="sub">Net worth, investments, liabilities and monthly income at a glance. Every card and row is clickable — tap one to jump straight to the full record. Use the filter dropdown on Recent Investments to narrow the list.</div></div></div>
+            <div class="item-row"><div class="meta"><div class="name">Wealth</div><div class="sub">Assets, liabilities, income sources and general investments — stocks, mutual funds, ETFs, gold, real estate, insurance/ULIP, crypto.</div></div></div>
+            <div class="item-row"><div class="meta"><div class="name">Fixed Income</div><div class="sub">FDs, corporate FDs, RDs, bonds, sovereign gold bonds, post office schemes and debentures — instruments with a fixed or predictable return.</div></div></div>
+            <div class="item-row"><div class="meta"><div class="name">Retirement</div><div class="sub">PPF, EPF, VPF, NPS and Superannuation accounts you're still building, with contribution history.</div></div></div>
+            <div class="item-row"><div class="meta"><div class="name">Pension</div><div class="sub">Pension income you already receive — military, civil, family pension or an NPS annuity. No principal or maturity fields, just a monthly amount.</div></div></div>
+            <div class="item-row"><div class="meta"><div class="name">Tax</div><div class="sub">A simple Section 80C tracker based on your PPF/EPF/VPF contributions this year. Not tax advice.</div></div></div>
+            <div class="item-row"><div class="meta"><div class="name">Goals</div><div class="sub">Savings targets with a progress bar against how much you've saved.</div></div></div>
+            <div class="item-row"><div class="meta"><div class="name">Family</div><div class="sub">A simple household record — nominees, policy numbers, notes.</div></div></div>
+            <div class="item-row"><div class="meta"><div class="name">Reports</div><div class="sub">Save net-worth snapshots over time and export a full JSON backup.</div></div></div>
           </div>
         </div>
-        <div class="section-title">Tips</div>
+
+        <div class="section-title">Adding, editing and removing entries</div>
         <div class="card">
-          <div class="pill-note">Tap the ⓘ icon next to any tab or field for a plain-language explanation. Tap the 👁 icon in the header to hide all amounts on screen — handy over someone's shoulder.</div>
+          <div class="sub">Every list has a <strong>+ Add</strong> button to log a new entry. Existing rows have <strong>Edit</strong> (opens the same form pre-filled so you can correct or update it in place) and <strong>Remove</strong> (deletes it — this can't be undone). The ＋ Quick Add button in the header is a shortcut to the add forms from anywhere in the app.</div>
+        </div>
+
+        <div class="section-title">Privacy — hiding amounts</div>
+        <div class="card">
+          <div class="sub">Tap the 👁 icon in the header (or the button in Settings) to mask every ₹ amount on screen with ••••••. Handy if someone's looking over your shoulder. Tap again to reveal. This only affects the display — your data isn't changed.</div>
+        </div>
+
+        <div class="section-title">Info tooltips</div>
+        <div class="card">
+          <div class="sub">Tap the small ⓘ icon next to any tab name or form field (especially "Type" dropdowns) for a plain-language explanation of what it means and where it belongs.</div>
+        </div>
+
+        <div class="section-title">Backup and privacy of your data</div>
+        <div class="card">
+          <div class="pill-note">RFM stores everything only on the device you're using — there's no server, and nothing leaves your phone unless you deliberately set up optional cloud sync (see Settings). Export a backup from Reports or Settings regularly, especially before resetting or switching devices.</div>
         </div>
       </div>`;
   }
@@ -869,30 +886,38 @@
     });
   }
 
-  function fieldHtml(f) {
+  function fieldHtml(f, existing) {
+    const raw = existing ? existing[f.key] : "";
+    const val = raw == null ? "" : raw;
     if (f.type === "select") {
       return `<select id="f_${f.key}" ${f.required ? "required" : ""}>
         <option value="">Select…</option>
-        ${f.options.map((o) => `<option value="${escapeHtml(o)}">${escapeHtml(o)}</option>`).join("")}
+        ${f.options.map((o) => `<option value="${escapeHtml(o)}" ${String(o) === String(val) ? "selected" : ""}>${escapeHtml(o)}</option>`).join("")}
       </select>`;
     }
-    return `<input id="f_${f.key}" type="${f.type}" ${f.type === "number" ? 'step="any"' : ""} placeholder="${escapeHtml(f.placeholder || "")}" ${f.required ? "required" : ""}>`;
+    return `<input id="f_${f.key}" type="${f.type}" ${f.type === "number" ? 'step="any"' : ""} placeholder="${escapeHtml(f.placeholder || "")}" value="${escapeHtml(val)}" ${f.required ? "required" : ""}>`;
   }
 
-  function openInlineForm(key, containerSel) {
+  const RECORD_ARRAY = { asset: "assets", liability: "liabilities", investment: "investments", fixedincome: "investments", retirement: "investments", pension: "pensions", goal: "goals", family: "family", income: "income" };
+
+  function openInlineForm(key, containerSel, editId) {
     const def = FORM_DEFS[key];
     if (!def) return;
     const container = $(containerSel || `#form-${key}`);
     if (!container) return;
+    const arrName = RECORD_ARRAY[key];
+    const existing = editId ? (state[arrName] || []).find((x) => x.id === editId) : null;
+    const isEdit = !!existing;
+
     container.innerHTML = `
       <div class="card form-card">
-        <div class="form-title">${escapeHtml(def.title)}</div>
+        <div class="form-title">${isEdit ? "Edit " + escapeHtml(def.title.replace(/^Add /i, "")) : escapeHtml(def.title)}</div>
         <form data-form-key="${key}">
           <div class="form-grid">
-            ${def.fields.map((f) => `<div class="field"><label>${escapeHtml(f.label)}${infoIcon(f.info)}</label>${fieldHtml(f)}</div>`).join("")}
+            ${def.fields.map((f) => `<div class="field"><label>${escapeHtml(f.label)}${infoIcon(f.info)}</label>${fieldHtml(f, existing)}</div>`).join("")}
           </div>
           <div class="form-footer">
-            <button type="submit" class="btn-primary">Save</button>
+            <button type="submit" class="btn-primary">${isEdit ? "Save changes" : "Save"}</button>
             <button type="button" class="btn-ghost" data-cancel-form>Cancel</button>
           </div>
         </form>
@@ -902,7 +927,16 @@
       e.preventDefault();
       const data = {};
       def.fields.forEach((f) => { data[f.key] = $(`#f_${f.key}`, form).value.trim(); });
-      def.submit(data);
+      if (isEdit) {
+        def.fields.forEach((f) => {
+          let v = data[f.key];
+          if (f.type === "number") v = v === "" ? (f.required ? 0 : null) : Number(v);
+          existing[f.key] = v;
+        });
+        existing.updatedAt = new Date().toISOString();
+      } else {
+        def.submit(data);
+      }
       saveState();
       container.innerHTML = "";
       render();
@@ -916,6 +950,16 @@
 
     $$("[data-open-form]", main).forEach((btn) => {
       btn.addEventListener("click", () => openInlineForm(btn.dataset.openForm));
+    });
+    $$("[data-edit]", main).forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const key = btn.dataset.edit, id = btn.dataset.id;
+        openInlineForm(key, null, id);
+        setTimeout(() => {
+          const el = $(`#form-${key}`);
+          if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+        }, 50);
+      });
     });
     $$("[data-del]", main).forEach((btn) => {
       btn.addEventListener("click", () => {
