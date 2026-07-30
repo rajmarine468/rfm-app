@@ -57,6 +57,7 @@
       </div>
       <div class="header-actions">
         <span id="syncStatus" class="sync-status hidden"></span>
+        <button id="hideAmountsBtn" class="light" title="Hide amounts">👁</button>
         <button id="quickAddBtn" class="light">＋ Quick Add</button>
         <button id="lockBtn" class="light">Lock</button>
         <button id="menuBtn" class="light mobile-only">☰</button>
@@ -65,16 +66,17 @@
 
     <div class="layout">
       <nav id="sidebar">
-        <button class="nav active" data-page="dashboard">Dashboard</button>
-        <button class="nav" data-page="wealth">Wealth</button>
-        <button class="nav" data-page="fixedIncome">Fixed Income</button>
-        <button class="nav" data-page="retirement">Retirement</button>
-        <button class="nav" data-page="tax">Tax</button>
-        <button class="nav" data-page="goals">Goals</button>
-        <button class="nav" data-page="family">Family</button>
-        <button class="nav" data-page="reports">Reports</button>
-        <button class="nav" data-page="learn">Learn Your RFM</button>
-        <button class="nav" data-page="settings">Settings</button>
+        <div class="nav-item"><button class="nav active" data-page="dashboard">Dashboard</button><button type="button" class="info-icon" data-info="Your net worth, monthly income, recent investments and goal progress at a glance.">ⓘ</button></div>
+        <div class="nav-item"><button class="nav" data-page="wealth">Wealth</button><button type="button" class="info-icon" data-info="Everything you own and owe: assets, liabilities, income sources and general investments (stocks, mutual funds, gold, real estate).">ⓘ</button></div>
+        <div class="nav-item"><button class="nav" data-page="fixedIncome">Fixed Income</button><button type="button" class="info-icon" data-info="Bonds, FDs, RDs, sovereign gold bonds and similar fixed-return instruments — principal, rate and maturity tracked.">ⓘ</button></div>
+        <div class="nav-item"><button class="nav" data-page="retirement">Retirement</button><button type="button" class="info-icon" data-info="Long-term retirement accounts you're still building: PPF, EPF, VPF, NPS, Superannuation.">ⓘ</button></div>
+        <div class="nav-item"><button class="nav" data-page="pension">Pension</button><button type="button" class="info-icon" data-info="Pension income you already receive — military, civil, family pension or annuity payouts.">ⓘ</button></div>
+        <div class="nav-item"><button class="nav" data-page="tax">Tax</button><button type="button" class="info-icon" data-info="A simple Section 80C savings tracker based on your PPF/EPF/VPF contributions. Not tax advice.">ⓘ</button></div>
+        <div class="nav-item"><button class="nav" data-page="goals">Goals</button><button type="button" class="info-icon" data-info="Savings targets like a house, education or a trip, with progress tracking.">ⓘ</button></div>
+        <div class="nav-item"><button class="nav" data-page="family">Family</button><button type="button" class="info-icon" data-info="A simple record of dependants for your financial planning.">ⓘ</button></div>
+        <div class="nav-item"><button class="nav" data-page="reports">Reports</button><button type="button" class="info-icon" data-info="Net worth snapshots over time, plus data export/backup.">ⓘ</button></div>
+        <div class="nav-item"><button class="nav" data-page="learn">Learn Your RFM</button><button type="button" class="info-icon" data-info="A short guide to what each section is for.">ⓘ</button></div>
+        <div class="nav-item"><button class="nav" data-page="settings">Settings</button><button type="button" class="info-icon" data-info="Your profile, PIN, backup, privacy and reset options.">ⓘ</button></div>
       </nav>
       <main id="main"></main>
     </div>
@@ -87,12 +89,15 @@
         <button type="button" data-quick="asset">Add Asset</button>
         <button type="button" data-quick="liability">Add Liability</button>
         <button type="button" data-quick="investment">Add Investment</button>
+        <button type="button" data-quick="pension">Add Pension</button>
         <button type="button" data-quick="goal">Add Goal</button>
         <button type="button" data-quick="family">Add Family Member</button>
         <button type="button" data-quick="income">Add Income</button>
       </div>
     </form>
   </dialog>
+
+  <div id="infoPopover" class="info-popover hidden" role="tooltip"></div>
 
   <!-- Firebase (optional cloud sync). Loaded lazily; app works fully offline if these fail to load or are not configured. -->
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js" defer></script>
