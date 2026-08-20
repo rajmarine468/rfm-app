@@ -97,7 +97,73 @@
     if (!s.goals) s.goals = [];
     if (!s.family) s.family = [];
     if (!s.history) s.history = [];
+    if (!s.meta) s.meta = { migrations: [] };
+    if (!s.meta.migrations) s.meta.migrations = [];
+    applyDataMigrations(s);
     return s;
+  }
+
+  /* ---------------- one-time data migrations ----------------
+     Each migration runs at most once per device/account (tracked in
+     s.meta.migrations), and only adds an entry if a matching one isn't
+     already present — so redeploying this file is safe and won't
+     duplicate anything or overwrite edits you've since made. */
+  function applyDataMigrations(s) {
+    const done = s.meta.migrations;
+    const applied = (id) => done.includes(id);
+
+    const MIGRATION_ID = "2026-08-19-wint-stablebonds-ppf-snapshot";
+    if (!applied(MIGRATION_ID)) {
+      const hasNamra = s.investments.some((i) => i.institution === "Wint" && i.name === "Namra Finance");
+      if (!hasNamra) {
+        s.investments.push({
+          id: uid(),
+          type: "Bond",
+          name: "Namra Finance",
+          institution: "Wint",
+          principal: 101899,
+          currentValue: 102826,
+          interestRate: 11.25,
+          maturityDate: "2028-09-19",
+          notes: "YTM 11.25%. Gains ₹927 as of 19-Aug-2026 (tenure left 2y 1m at that date — maturity date estimated from this). App shows a TDS-saving prompt referencing Form 15G/15H (labelled 'Form 121' in-app — verify exact form when reviewing).",
+          updatedAt: "2026-08-19T00:00:00.000Z"
+        });
+      }
+
+      const hasSatin = s.investments.some((i) => i.name === "Satin Finserv Limited");
+      if (!hasSatin) {
+        s.investments.push({
+          id: uid(),
+          type: "Bond",
+          name: "Satin Finserv Limited",
+          institution: "Stable Bonds",
+          principal: 199140,
+          currentValue: 199519,
+          interestRate: 12.10,
+          maturityDate: "2028-06-29",
+          notes: "Series Jun'28. Credit rating A- (Stable). 2 units purchased. Invested 13-Aug-2026, settled 14-Aug-2026. Gains ₹379 as of 19-Aug-2026.",
+          updatedAt: "2026-08-19T00:00:00.000Z"
+        });
+      }
+
+      const ppf = s.investments.find((i) => i.type === "PPF" && i.accountNumber === "86110PPF000000000112");
+      if (ppf) {
+        ppf.contributions = ppf.contributions || [];
+        const hasContribution = (date, amount) => ppf.contributions.some((c) => c.date === date && Number(c.amount) === Number(amount));
+        if (!hasContribution("2026-06-17", 700)) {
+          ppf.contributions.push({ date: "2026-06-17", amount: 700, channel: "BC Channel", balanceAfter: 149929 });
+        }
+        if (!hasContribution("2026-03-31", 4147)) {
+          ppf.contributions.push({ date: "2026-03-31", amount: 4147, channel: null, balanceAfter: null });
+        }
+        ppf.currentValue = 149929;
+        ppf.principal = 149929;
+        ppf.investedThisYear = 45700;
+        ppf.interestRate = 7.1;
+      }
+
+      done.push(MIGRATION_ID);
+    }
   }
 
   let state = null;
@@ -285,6 +351,58 @@
     return incomeMonthly + pensionMonthly;
   }
 
+  /* ---------------- projected interest & reminders ----------------
+     Both are computed fresh from state + the current date on every
+     render, so they're accurate whenever you open the app — including
+     "every morning" without needing any stored/scheduled state. */
+  function projectedInterestBreakdown() {
+    return state.investments
+      .filter((i) => i.interestRate != null && i.currentValue != null)
+      .map((i) => ({
+        id: i.id,
+        name: i.name,
+        type: i.type,
+        rate: Number(i.interestRate),
+        expected: Number(i.currentValue || 0) * Number(i.interestRate) / 100
+      }))
+      .sort((a, b) => b.expected - a.expected);
+  }
+  function projectedAnnualInterestTotal() {
+    return projectedInterestBreakdown().reduce((s, r) => s + r.expected, 0);
+  }
+
+  function buildReminders() {
+    const today = new Date();
+    const msDay = 86400000;
+    const items = [];
+
+    state.investments
+      .filter((i) => FIXED_INCOME_TYPES.includes(i.type) && i.maturityDate)
+      .forEach((i) => {
+        const days = Math.round((new Date(i.maturityDate) - today) / msDay);
+        if (days >= 0 && days <= 120) {
+          items.push(`⏳ ${i.name} matures in ${days} day${days === 1 ? "" : "s"} (${formatDate(i.maturityDate)}) — plan reinvestment.`);
+        } else if (days < 0 && days >= -14) {
+          items.push(`✅ ${i.name} matured on ${formatDate(i.maturityDate)} — check payout/reinvestment.`);
+        }
+      });
+
+    const eightyCLimit = 150000;
+    state.investments
+      .filter((i) => ["PPF", "EPF", "VPF"].includes(i.type))
+      .forEach((i) => {
+        const invested = Number(i.investedThisYear || 0);
+        if (invested < eightyCLimit) {
+          const fyEndYear = today.getMonth() >= 3 ? today.getFullYear() + 1 : today.getFullYear();
+          const fyEnd = new Date(fyEndYear, 2, 31);
+          const daysLeft = Math.round((fyEnd - today) / msDay);
+          items.push(`💰 ₹${Math.round(eightyCLimit - invested).toLocaleString("en-IN")} of 80C headroom left in ${i.name} — ${daysLeft} day${daysLeft === 1 ? "" : "s"} to FY-end (31 Mar).`);
+        }
+      });
+
+    return items;
+  }
+
   /* ---------------- render router ---------------- */
   function render() {
     const main = $("#main");
@@ -319,6 +437,9 @@
       ? state.investments
       : state.investments.filter(filterMap[dashboardInvestFilter] || (() => true));
     const recentInvest = [...filtered].sort((a, b) => (b.updatedAt || "").localeCompare(a.updatedAt || "")).slice(0, 8);
+    const reminders = buildReminders();
+    const interestBreakdown = projectedInterestBreakdown();
+    const projectedInterest = projectedAnnualInterestTotal();
 
     return `
       <div class="page">
@@ -329,6 +450,11 @@
           </div>
         </div>
         <div class="ledger-rule"></div>
+        ${reminders.length ? `
+        <div class="card" style="margin-bottom:16px;">
+          <div class="section-title" style="margin:0 0 8px;">Today's Reminders${infoIcon("Generated fresh each time you open the app, from maturity dates and 80C contribution limits — no setup needed.")}</div>
+          ${reminders.map((r) => `<div class="pill-note" style="margin-top:8px;">${escapeHtml(r)}</div>`).join("")}
+        </div>` : ""}
         <div class="grid grid-4">
           <div class="card stat-card linkable ${t.netWorth >= 0 ? "positive" : "negative"}" data-goto="reports">
             <div class="label">Net Worth${infoIcon("Assets + investments − liabilities. Tap to see the trend over time in Reports.")}</div>
@@ -350,6 +476,19 @@
             <div class="value">${formatINR(monthlyIncome)}</div>
             <div class="sub">Income + pension, per month</div>
           </div>
+        </div>
+
+        <div class="section-title">Expected Future Interest${infoIcon("Projected annual interest income if current rates and balances hold, based on each holding's rate × current value. An estimate, not a guarantee — actual bond/FD payouts depend on the instrument's own schedule.")}</div>
+        <div class="card" style="margin-bottom:16px;">
+          <div class="grid grid-2">
+            <div class="stat-card"><div class="label">Projected Annual Interest</div><div class="value">${formatINR(projectedInterest)}</div><div class="sub">Across ${interestBreakdown.length} interest-bearing holding${interestBreakdown.length === 1 ? "" : "s"}</div></div>
+            <div class="stat-card"><div class="label">≈ Monthly Equivalent</div><div class="value">${formatINR(projectedInterest / 12)}</div><div class="sub">Projected interest ÷ 12</div></div>
+          </div>
+          ${interestBreakdown.length ? `<div class="item-list" style="margin-top:12px;">${interestBreakdown.map((r) => `
+            <div class="item-row">
+              <div class="meta"><div class="name">${escapeHtml(r.name)} <span class="tag ${RETIREMENT_TYPES.includes(r.type) ? "gold" : ""}">${escapeHtml(r.type)}</span></div><div class="sub">${r.rate}% p.a.</div></div>
+              <div class="amount">${formatINR(r.expected)}/yr</div>
+            </div>`).join("")}</div>` : emptyState("No interest-bearing holdings yet", "Add a bond, FD or retirement account to see projected interest here.")}
         </div>
 
         <div class="section-title-row">
