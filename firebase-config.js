@@ -9,14 +9,11 @@
    3. Paste your project's config object below.
    ============================================================ */
 
-window.RFM_FIREBASE_CONFIG = null;
-
-// Example (do not use these placeholder values):
-// window.RFM_FIREBASE_CONFIG = {
-//   apiKey: "AIzaSy...",
-//   authDomain: "your-project.firebaseapp.com",
-//   projectId: "your-project",
-//   storageBucket: "your-project.appspot.com",
-//   messagingSenderId: "000000000000",
-//   appId: "1:000000000000:web:xxxxxxxxxxxxxxxx"
-// };
+window.RFM_FIREBASE_CONFIG = {
+  apiKey: "AIzaSyDoPqzNLBYPGmq3Vb4S7pQ5n5fdusqiGWw",
+  authDomain: "rfm-app-6a098.firebaseapp.com",
+  projectId: "rfm-app-6a098",
+  storageBucket: "rfm-app-6a098.firebasestorage.app",
+  messagingSenderId: "767083136562",
+  appId: "1:767083136562:web:a72e3a8171bdc742c7de2b"
+};
